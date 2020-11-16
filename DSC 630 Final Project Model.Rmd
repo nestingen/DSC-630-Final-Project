@@ -1,0 +1,275 @@
+---
+title: "Covid-19 Impact and Prediction of Travel in California - Date Updated Through October 2020"
+author: "Corinne Medeiros and Amy Nestingen"
+date: "11/8/2020"
+output:
+  word_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+library(knitr)
+
+```
+
+# Overview
+
+We are tasked to predict travel in California based on the impact of Covid-19. We started our analysis in Python where we cleaned and analyzed the data. Now, we we apply a model to the clean data and predict amount of trips while understanding California based on confirmed Convid-19 cases and deaths. 
+
+## Import libraries
+
+```{r imports, results='hide'}
+#imports
+suppressWarnings(library(stats))
+suppressWarnings(library(ggplot2))
+suppressWarnings(library(plyr))
+suppressWarnings(library(dplyr))
+suppressWarnings(library(readr))
+suppressWarnings(library(forecast))
+suppressWarnings(library(fpp2))
+suppressWarnings(library(TTR))
+suppressWarnings(library(tidyr))
+
+```
+
+## Read in Data sets and Combine
+In this section, we read in the data, did a couple of cleaning tweaks, grouped the data to the appropriate level and combined the data sets. The data is grouped by YearMonth and County name. We are predicting the number of trips in California so this field is summed. The new casese of Covid and the new deaths are also summed. 
+
+```{r layout="l-body-outset"}
+#Set Working Directory and Check
+setwd('C:/Users/nesti/OneDrive/Bellevue/DSC 630/DSC 630 Project')
+getwd()
+
+#Read in Trips Data 
+dfTrip <- read.csv("New_Trips_by_Distance_CA_clean.csv")
+dfCovid <- read.csv("New_covid_data_CA_clean.csv")
+
+
+
+#Trip: Print Table
+#head(dfTrip)
+
+#Trip:Remove County from County name
+
+dfTrip$County.Name <- as.character(dfTrip$County.Name)
+dfTrip$County.Name = substr(dfTrip$County.Name,1,nchar(dfTrip$County.Name)-7)
+#head(dfTrip)
+
+
+#Trip;Format Date
+dfTrip$Date <- as.Date(dfTrip$Date,format = "%m/%d/%Y")
+mode(dfTrip$Date)
+dfTrip$YearMonth<-format(dfTrip$Date,"%Y-%m")
+#head(dfTrip)
+
+
+#Trip: Group by Month
+
+grp_dfTrip <- group_by(dfTrip, YearMonth, County.Name) %>% 
+  summarize(sum_trips = sum(Number.of.Trips)
+    )
+head(grp_dfTrip)
+
+#Covid: Print table
+head(dfCovid)
+
+#Covid: Format Date
+dfCovid$date <- as.Date(dfCovid$date,format = "%m/%d/%Y")
+mode(dfCovid$date)
+dfCovid$YearMonth<-format(dfCovid$date,"%Y-%m")
+#head(dfCovid)
+
+#rename so merge correctly
+names(dfCovid) [2] <- "County.Name"
+names(dfCovid) [1] <- "ID"
+#head(dfCovid)
+
+
+#Covid: Group by Month
+grp_dfCovid <- group_by(dfCovid, YearMonth, County.Name) %>% 
+  summarise(sum_new.count.confirmed = sum(newcountconfirmed),
+            sum_new.count.deaths = sum(newcountdeaths)
+  )
+
+library(ggrepel)
+#Plot Covid Data
+ggplot(data = grp_dfCovid, aes(x = YearMonth, y = sum_new.count.confirmed)) + 
+  geom_point(alpha = .3) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  ggtitle("Confirmed Covid-19 Cases by County by Month") + xlab("YearMonth") + ylab("Confirmed Cases") +
+  geom_text_repel(data = subset(grp_dfCovid, sum_new.count.confirmed > 20000), aes(label = County.Name))
+
+
+ggplot(data = grp_dfCovid, aes(x = YearMonth, y =  sum_new.count.deaths)) + 
+  geom_point(alpha = .3) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  ggtitle("Confirmed Covid-19 Deaths by County by Month") + xlab("YearMonth") + ylab("Deaths") +
+    geom_text_repel(data = subset(grp_dfCovid, sum_new.count.deaths > 400), aes(label = County.Name))
+
+
+##Merge Data sets
+merge_tc <- left_join(grp_dfTrip, grp_dfCovid, by = NULL, copy = FALSE)
+
+head(merge_tc)
+
+summary(merge_tc)
+
+
+  
+
+
+
+#Change NA to 0
+
+merge_tc <- merge_tc %>% replace_na(list(sum_new.count.confirmed = 0, sum_new.count.deaths = 0))
+
+merge_tc
+
+```
+#Test and Train Data
+In this section we split the data into test and train groups. This is so we know how the models preform with fresh data. We also group the data one last time by YearMonth. This is because we are predicting travel in California, not by County. 
+```{r testtrain}
+
+#Spilt data into test and train
+dt = sort(sample(nrow(merge_tc), nrow(merge_tc)*.7))
+dat_train_ug<-merge_tc[dt,]
+dat_test_ug<-merge_tc[-dt,]
+
+nrow(dat_train_ug); nrow(dat_test_ug)
+
+
+dat_train <- group_by(dat_train_ug, YearMonth) %>% 
+  summarise(
+           sum_trips_MM = sum(sum_trips)/1000000
+            )
+
+dat_test <- group_by(dat_test_ug, YearMonth) %>% 
+  summarise(
+            sum_trips_MM = sum(sum_trips)/1000000
+            )
+
+nrow(dat_train); nrow(dat_test)
+
+head(dat_test)
+
+#Plot train data
+ggplot(data = dat_train, aes(x = YearMonth, y = sum_trips_MM)) + 
+  geom_point() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+  
+  
+```
+#Model
+
+```{r model}
+
+dat_ts <- ts(dat_train[, 2], start = c(2019, 1), end = c(2020,9), frequency = 12)
+
+head(dat_ts)
+
+
+#To Calculate Mape
+mape <- function(actual,pred){
+  mape <- mean(abs((actual - pred)/actual))*100
+  return (mape)
+}
+  
+```
+#Naive FOrecasting Model
+
+```{r Naive}
+naive_mod <- naive(dat_ts, h = 21)
+summary(naive_mod)
+
+dat_test$naive = 36120.3
+
+mape(dat_test$sum_trips_MM, dat_test$naive)
+```
+
+
+#Simple Exponetial Smoothing
+
+```{r se}
+
+se_model <- ses(dat_ts, h = 22)
+summary(se_model)
+
+df_fc = as.data.frame(se_model)
+dat_test$simplexp = df_fc$`Point Forecast`
+mape(dat_test$sum_trips_MM, dat_test$simplexp) 
+
+```
+
+#ARIMA
+
+```{r}
+
+arima_model <- auto.arima(dat_ts)
+summary(arima_model)
+
+
+fore_arima = forecast::forecast(arima_model, h=22)
+df_arima = as.data.frame(fore_arima)
+dat_test$arima = df_arima$`Point Forecast`
+mape(dat_test$sum_trips_MM, dat_test$arima)  ## 2.1%
+
+```
+
+#Holt's Trend
+
+
+```{r Holts}
+
+holt_model <- holt(dat_ts, h = 22)
+summary(holt_model)
+
+
+df_holt = as.data.frame(holt_model)
+dat_test$holt = df_holt$`Point Forecast`
+mape(dat_test$sum_trips_MM, dat_test$holt)
+
+```
+
+
+#TBATS
+
+```{r TBATS}
+
+model_tbats <- tbats(dat_ts)
+summary(model_tbats)
+
+for_tbats <- forecast::forecast(model_tbats, h = 22)
+df_tbats = as.data.frame(for_tbats)
+dat_test$tbats = df_tbats$`Point Forecast`
+mape(dat_test$sum_trips_MM, dat_test$tbats) 
+
+
+```
+
+#Summary
+
+We decided to investigate the ARIMA model further since that gave us the lowest MAPE. Below show the estimated trips to be traveled with a 90% confidence interval. As we can see, this is very hard to predict. 
+
+```{r Summary}
+
+d.arima <- auto.arima(dat_ts)
+d.forecast <- forecast(d.arima, level = c(90), h = 50)
+autoplot(d.forecast, ylab = "Actual/Predicted Trips in Millions for California") + ggtitle('Forecast from ARIMA (0,1,1)')
+
+```
+```{r ARIMA}
+fit <- Arima(dat_ts, order=c(0,1,1))
+fit
+checkresiduals(fit)
+
+
+
+```
+
+``` {r Autoplot}
+
+autoplot(forecast(fit))
+```
