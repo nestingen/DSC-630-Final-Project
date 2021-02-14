@@ -3,4 +3,8 @@ This study examines travel trends in the United States, specifically trips taken
 
 In order to predict the number of trips taken in upcoming months, we explored a variety of methods. Specifically, the technical forecasting approach in this study consists of several time series models, with the ARIMA model producing the best results. However, we have found that it is very difficult to predict the travel trends in California due to the uncertainty surrounding Covid-19 cases and deaths. There are many different inputs that can affect the number of Covid-19 cases and deaths, such as the distribution of a vaccine, mask mandates, attending school in-person, and the willingness of people to adhere to health guidelines. Because of these unknowns, it is a challenge to model future travel trends.
 
+<p align="center"> 
+  <img src="https://user-images.githubusercontent.com/54515596/107891263-0d051300-6ee3-11eb-9fd1-f956cfc4bea0.png" width ="700">
+</p>
+
 **[Click to Go Back to Homepage](https://nestingen.github.io/)
