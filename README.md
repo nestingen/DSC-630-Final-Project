@@ -1,4 +1,4 @@
-# Predictive-Analytics-California-Travel
+## Predictive-Analytics-California-Travel
 This study examines travel trends in the United States, specifically trips taken in
 the state of California, and aims to predict future trends. The scope of the data covers
 California trips from January 2019 through October 2020, with the prediction objective
@@ -15,3 +15,7 @@ different inputs that can affect the number of Covid-19 cases and deaths, such a
 distribution of a vaccine, mask mandates, attending school in-person, and the
 willingness of people to adhere to health guidelines. Because of these unknowns, it is a
 challenge to model future travel trends.
+
+<p align="center"> 
+  <img src="https://user-images.githubusercontent.com/54515596/107891263-0d051300-6ee3-11eb-9fd1-f956cfc4bea0.png" width ="700">
+</p>
